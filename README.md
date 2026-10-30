@@ -122,6 +122,7 @@ Odpowiedz:
 
 ### 6. Użycie ręczne
 
+- `/external-review-help` — wyświetl wszystkie komendy, odpowiedzi, opcje instalatora i konfiguracji,
 - `/external-review --pending` — pokaż niezałatwione uwagi z poprzednich recenzji,
 - `/external-review <ścieżki>` — zrecenzuj wskazane pliki (z pominięciem progów i limitu rund),
 - `/external-review` — w repozytorium git zrecenzuj wszystkie zmienione pliki kodu

@@ -12,12 +12,15 @@ import { buildArgs, readWindowsOverrides, resolveCodex, runCodex } from './src/e
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, 'src', 'external-review');
+// Skill /external-review-help leży obok głównego (src/external-review-help).
+const helpSrc = (src) => path.join(path.dirname(src), 'external-review-help');
 const REQUIRED_FLAGS = ['--output-schema', '--ephemeral', '--ignore-user-config'];
 const TOOL_MATCHER = 'Write|Edit|MultiEdit|NotebookEdit';
 
 // Ścieżki hooków muszą być bezwzględne, więc BASE jest rozwiązywany względem cwd.
 const normEnv = (env) => ({ ...env, CLAUDE_CONFIG_DIR: path.resolve(baseDir(env)) });
 const skillTarget = (env) => path.join(baseDir(env), 'skills', 'external-review');
+const helpTarget = (env) => path.join(baseDir(env), 'skills', 'external-review-help');
 const dataDir = (env) => path.join(baseDir(env), 'external-review');
 const settingsPath = (env) => path.join(baseDir(env), 'settings.json');
 const OWN_RE = /^node "[^"]*skills\/external-review\/hook\.mjs" --event (prompt|tool|stop)$/;
@@ -182,7 +185,7 @@ export function copyDir(from, to) {
   }
 }
 
-const SIDE_RE = /^external-review\.(new|old)-/;
+const SIDE_RE = /^external-review(-help)?\.(new|old)-/;
 
 // Usuwa pozostałości przerwanych instalacji (inaczej Claude Code wczytałby je jako kolejne skille).
 function removeLeftovers(skillsDir) {
@@ -195,14 +198,14 @@ function removeLeftovers(skillsDir) {
 
 // Kopia do katalogu obok celu, weryfikacja, potem zamiana (stary na bok → nowy na miejsce →
 // usunięcie starego). Przy błędzie poprzednia instalacja zostaje nienaruszona.
-function replaceSkillDir(src, target) {
+function replaceSkillDir(src, target, required = ['SKILL.md', 'hook.mjs']) {
   const stamp = `${Date.now()}-${process.pid}`;
   const fresh = `${target}.new-${stamp}`;
   const old = `${target}.old-${stamp}`;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   try {
     copyDir(src, fresh);
-    for (const f of ['SKILL.md', 'hook.mjs']) {
+    for (const f of required) {
       if (!fs.existsSync(path.join(fresh, f))) {
         throw new Error(`po kopiowaniu brakuje pliku ${f}; sprawdź katalog źródłowy (${src}) i uprawnienia do katalogu docelowego`);
       }
@@ -235,8 +238,9 @@ export async function install(opts = {}, env = process.env) {
   const messages = [];
   const src = opts.srcDir || SRC;
   try {
-    if (overlaps(src, skillTarget(env))) {
-      return { ok: false, errors: [`Katalog źródłowy (${src}) pokrywa się z katalogiem docelowym (${skillTarget(env)}) lub zawiera go albo jest w nim zawarty. Sklonuj repozytorium poza ${path.join(baseDir(env), 'skills')}. Niczego nie zmieniono.`], messages };
+    const hitTarget = [skillTarget(env), helpTarget(env)].find((t) => overlaps(src, t));
+    if (hitTarget) {
+      return { ok: false, errors: [`Katalog źródłowy (${src}) pokrywa się z katalogiem docelowym (${hitTarget}) lub zawiera go albo jest w nim zawarty. Sklonuj repozytorium poza ${path.join(baseDir(env), 'skills')}. Niczego nie zmieniono.`], messages };
     }
     const errors = await preflight(opts, env);
     if (errors.length) return { ok: false, errors, messages };
@@ -248,6 +252,7 @@ export async function install(opts = {}, env = process.env) {
     const target = skillTarget(env);
     removeLeftovers(path.dirname(target));
     replaceSkillDir(src, target);
+    if (fs.existsSync(path.join(helpSrc(src), 'SKILL.md'))) replaceSkillDir(helpSrc(src), helpTarget(env), ['SKILL.md']);
 
     const next = { ...local, codexPath };
     if (opts.codexDefaultModel) next.model = null;
@@ -259,7 +264,7 @@ export async function install(opts = {}, env = process.env) {
     stripOwn(s);
     addOwn(s, env, loadConfig(env).hookTimeoutSec);
     writeSettings(env, s, settings !== null);
-    messages.push(`Zainstalowano w ${target}.`, `Codex: ${codexPath}`, 'Zrestartuj Claude Code, aby hooki zaczęły działać.');
+    messages.push(`Zainstalowano w ${target} (pomoc: /external-review-help).`, `Codex: ${codexPath}`, 'Zrestartuj Claude Code, aby hooki zaczęły działać.');
     return { ok: true, errors: [], messages };
   } catch (e) {
     return { ok: false, errors: [e.message], messages };
@@ -271,7 +276,7 @@ export async function uninstall(opts = {}, env = process.env) {
   const messages = [];
   try {
     const src = opts.srcDir || SRC;
-    const targets = opts.purge ? [skillTarget(env), dataDir(env)] : [skillTarget(env)];
+    const targets = opts.purge ? [skillTarget(env), helpTarget(env), dataDir(env)] : [skillTarget(env), helpTarget(env)];
     const hit = targets.find((t) => overlaps(src, t));
     if (hit) return { ok: false, errors: [`Katalog źródłowy instalatora (${src}) pokrywa się z ${hit} lub jest z nim zagnieżdżony; usunięcie skasowałoby repozytorium. Uruchom deinstalację z kopii repozytorium poza BASE. Niczego nie zmieniono.`], messages };
     const settings = readSettings(env);
@@ -280,8 +285,9 @@ export async function uninstall(opts = {}, env = process.env) {
       messages.push('Usunięto wpisy hooków z settings.json.');
     }
     fs.rmSync(skillTarget(env), { recursive: true, force: true });
+    fs.rmSync(helpTarget(env), { recursive: true, force: true });
     removeLeftovers(path.dirname(skillTarget(env)));
-    messages.push(`Usunięto ${skillTarget(env)}.`);
+    messages.push(`Usunięto ${skillTarget(env)} i ${helpTarget(env)}.`);
     if (opts.purge) {
       fs.rmSync(dataDir(env), { recursive: true, force: true });
       messages.push(`Usunięto ${dataDir(env)}.`);

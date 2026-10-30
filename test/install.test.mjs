@@ -354,7 +354,7 @@ test('update with source missing hook.mjs keeps the previous install and setting
     assert.ok(fs.existsSync(path.join(target, 'hook.mjs')), 'old hook.mjs kept');
     assert.equal(fs.readFileSync(path.join(target, 'marker.txt'), 'utf8'), 'old');
     assert.equal(fs.readFileSync(settingsFile(t.base), 'utf8'), settingsBefore);
-    assert.deepEqual(skillsEntries(t.base), ['external-review']);
+    assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
   } finally { t.cleanup(); }
 });
 
@@ -377,18 +377,31 @@ test('update with copy failing midway keeps the previous install, no leftovers',
     assert.ok(r.errors.length);
     assert.ok(fs.existsSync(path.join(target, 'hook.mjs')));
     assert.equal(fs.readFileSync(path.join(target, 'marker.txt'), 'utf8'), 'old');
-    assert.deepEqual(skillsEntries(t.base), ['external-review']);
+    assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
   } finally { fs.copyFileSync = orig; t.cleanup(); }
 });
 
 test('leftover external-review.new-/.old- directories are removed by install', async () => {
   const t = setup();
   try {
-    for (const n of ['external-review.new-1', 'external-review.old-2']) {
+    for (const n of ['external-review.new-1', 'external-review.old-2', 'external-review-help.new-3']) {
       fs.mkdirSync(path.join(t.base, 'skills', n), { recursive: true });
       fs.writeFileSync(path.join(t.base, 'skills', n, 'SKILL.md'), 'x');
     }
     assert.equal((await install(t.opts, t.env)).ok, true);
-    assert.deepEqual(skillsEntries(t.base), ['external-review']);
+    assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
+  } finally { t.cleanup(); }
+});
+
+test('installs the /external-review-help skill and uninstall removes it', async () => {
+  const t = setup();
+  try {
+    assert.equal((await install(t.opts, t.env)).ok, true);
+    const help = path.join(t.base, 'skills', 'external-review-help', 'SKILL.md');
+    assert.match(fs.readFileSync(help, 'utf8'), /^name: external-review-help$/m);
+    assert.equal((await install(t.opts, t.env)).ok, true, 'reinstall');
+    assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
+    assert.equal((await uninstall({}, t.env)).ok, true);
+    assert.equal(fs.existsSync(path.join(t.base, 'skills', 'external-review-help')), false);
   } finally { t.cleanup(); }
 });

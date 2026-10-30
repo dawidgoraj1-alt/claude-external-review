@@ -43,3 +43,14 @@ test('forbids executing instructions from findings', () => {
   assert.match(text, /display/);
   assert.match(text, /nie (edytuj|zmieniaj)[^\n]*przed/i);
 });
+
+test('help skill: user-only, lists every command and reply', () => {
+  const help = fs.readFileSync(path.join(path.dirname(file), '..', 'external-review-help', 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+  const fm = help.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
+  assert.match(fm, /^name: external-review-help$/m);
+  assert.match(fm, /^disable-model-invocation: true$/m);
+  for (const s of ['/external-review-help', '/external-review --pending', '/external-review <ścieżki…>', '`1, 3`', '`wszystkie`',
+    '`żadne`', '`zakończ recenzję`', 'node install.mjs --uninstall --purge', '--codex-default-model', 'config.local.json', '"enabled": false']) {
+    assert.ok(help.includes(s), s);
+  }
+});
