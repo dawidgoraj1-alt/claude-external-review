@@ -7,7 +7,7 @@ import { readWindowsOverrides } from './codex.mjs';
 import { headSha, statusPaths } from './git.mjs';
 import { makeContext } from './context.mjs';
 import { buildItems, chunkItems } from './material.mjs';
-import { appendRound, attributedFiles, clearDisplayed, listPendingFiles, readPending, saveDisplay } from './pending.mjs';
+import { appendRound, attributedFiles, clearDisplayed, corruptPendingFiles, corruptWarning, listPendingFiles, readPending, saveDisplay } from './pending.mjs';
 import { canonical, relTo, toSlash } from './paths.mjs';
 import { codexDeadline, markFileReviewed, resolveCodexPath, runJob } from './stop.mjs';
 import { readState, withState, writeBlob } from './state.mjs';
@@ -16,6 +16,12 @@ import { isBinary, normalizeText, sha256 } from './text.mjs';
 const STAGES = ['spec', 'plan', 'code'];
 const STAGE_NAMES = { spec: 'specyfikacja', plan: 'plan', code: 'kod' };
 const LIST_MAX = 20;
+
+// Narzędzie Bash Claude Code ma maks. 600 s — termin ręcznej recenzji kończy się wcześniej.
+const MANUAL_MAX_SEC = 540;
+export function manualDeadline(now, hookTimeoutSec) {
+  return codexDeadline(now, Math.min(hookTimeoutSec, MANUAL_MAX_SEC));
+}
 
 class UsageError extends Error {}
 
@@ -33,11 +39,12 @@ async function locked(ctx, fn) {
 // ocenioną przez Codexa (poprawki wrócą do recenzji). --final dodatkowo zapisuje BIEŻĄCĄ
 // treść plików z rund tego etapu jako przejrzaną i zeruje licznik rund (Ruling 13); bez --final
 // licznik jest zerowany dla plików niezmienionych od recenzji („żadne”).
-export async function markReviewed(ctx, stage, { final = false } = {}) {
+export async function markReviewed(ctx, stage, { final = false, extra = [] } = {}) {
   let removed = 0;
   const finalized = [];
   // Odczyty plików i hashowanie poza blokadą; w blokadzie tylko zapisy stanu.
   const pending = readPending(ctx.stateDir, stage);
+  const corrupt = corruptPendingFiles(ctx.stateDir, stage).map(corruptWarning);
   const files = pending
     ? [...new Set([
       ...pending.rounds.flatMap((r) => (Array.isArray(r?.files) ? r.files : [])),
@@ -45,12 +52,15 @@ export async function markReviewed(ctx, stage, { final = false } = {}) {
     ].filter((f) => typeof f === 'string' && f))]
     : [];
   const current = [];
-  for (const rel of files) {
+  // --final <ścieżki>: dodatkowe pliki zmienione przy wprowadzaniu poprawek (spoza uwag) też są zapisywane
+  // jako przejrzane; pliki wykluczone z recenzji (ignorePatterns/ignoreDirs) nie są śledzone.
+  const extras = final ? extra.filter((r) => !files.includes(r) && classify(r, ctx.config, ctx.nocase)) : [];
+  for (const rel of [...files, ...extras]) {
     try {
       const buf = fs.readFileSync(path.join(ctx.root, rel));
       if (!isBinary(buf)) {
         const text = normalizeText(buf);
-        current.push([rel, text, sha256(text)]);
+        current.push([rel, text, sha256(text), classify(rel, ctx.config, ctx.nocase) || stage]);
       }
     } catch { /* brak pliku lub nie plik */ }
   }
@@ -66,25 +76,30 @@ export async function markReviewed(ctx, stage, { final = false } = {}) {
       }
       return;
     }
-    for (const [rel, text] of current) {
-      s.files[rel] = { stage, reviewedHash: writeBlob(ctx.stateDir, text), rounds: 0 };
+    for (const [rel, text, , st] of current) {
+      s.files[rel] = { stage: extras.includes(rel) ? st : stage, reviewedHash: writeBlob(ctx.stateDir, text), rounds: 0 };
       s.outstanding = (s.outstanding || []).filter((r) => r !== rel);
       finalized.push(rel);
     }
   });
   if (noDisplay) {
     return `Etap ${STAGE_NAMES[stage]}: brak zapisanej numeracji pokazanych uwag — nic nie usunięto ani nie oznaczono. `
-      + `Najpierw zapisz numerację: --save-display --stage ${stage} (JSON numer → id uwagi na stdin), potem ponów --mark-reviewed.`;
+      + `Najpierw zapisz numerację: --save-display --stage ${stage} (JSON numer → id uwagi na stdin), potem ponów --mark-reviewed.`
+      + corrupt.map((w) => `\n⚠ ${w}`).join('');
   }
   let line = `Etap ${STAGE_NAMES[stage]}: usunięto z pending uwag: ${removed}.`;
   if (final) {
     line += ` Bieżąca treść oznaczona jako przejrzana (${finalized.length} plików${finalized.length ? `: ${list(finalized)}` : ''}).`;
   }
+  for (const w of corrupt) line += `\n⚠ ${w}`;
   return line;
 }
 
 export function listPending(ctx) {
-  return { pendingFiles: listPendingFiles(ctx.stateDir).map(toSlash) };
+  return {
+    pendingFiles: listPendingFiles(ctx.stateDir).map(toSlash),
+    warnings: corruptPendingFiles(ctx.stateDir).map(corruptWarning),
+  };
 }
 
 function resolveRels(ctx, paths) {
@@ -112,10 +127,10 @@ function fullItem(ctx, rel) {
   return { path: rel, kind: 'full', text: content, changedLines: n, hash: sha256(content), content };
 }
 
-// --manual: bez bramki hashy, progu i limitu rund. exitCode: 0, 1 (błąd Codexa), 2 (argumenty).
+// --manual: bez bramki hashy, progu i limitu rund; jawne ścieżki omijają ignorePatterns/ignoreDirs. exitCode: 0, 1 (błąd Codexa), 2 (argumenty).
 export async function runManual(ctx, paths) {
   const cfg = ctx.config;
-  const warnings = [];
+  const warnings = corruptPendingFiles(ctx.stateDir).map(corruptWarning);
   const explicit = paths.length > 0;
   const pendingNow = () => listPendingFiles(ctx.stateDir).map(toSlash);
   let rels;
@@ -124,23 +139,23 @@ export async function runManual(ctx, paths) {
   } else {
     if (!ctx.isGit) {
       process.stderr.write('Poza repozytorium git podaj ścieżki plików do recenzji: hook.mjs --manual --cwd <katalog> <ścieżki...>\n');
-      return { pendingFiles: [], warnings, exitCode: 2 };
+      return { pendingFiles: [], reviewed: [], warnings, exitCode: 2 };
     }
     rels = statusPaths(ctx.root).filter((r) => classify(r, cfg, ctx.nocase) === 'code' && fileHash(ctx.root, r) !== null);
   }
 
   const review = { spec: [], plan: [], code: [] };
   for (const rel of rels) {
-    const stage = classify(rel, cfg, ctx.nocase);
-    if (!stage) warnings.push(`Pominięto plik wykluczony z recenzji (ignorePatterns/ignoreDirs): ${rel}.`);
-    else review[stage].push(rel);
+    // Jawnie wskazana ścieżka omija ignorePatterns/ignoreDirs; plik poza spec/plan jest recenzowany jako kod.
+    const stage = classify(rel, cfg, ctx.nocase) || 'code';
+    review[stage].push(rel);
   }
-  if (!STAGES.some((st) => review[st].length)) return { pendingFiles: pendingNow(), warnings, exitCode: 0 };
+  if (!STAGES.some((st) => review[st].length)) return { pendingFiles: pendingNow(), reviewed: [], warnings, exitCode: 0 };
 
   const codexPath = resolveCodexPath(cfg);
   if (!codexPath) {
     process.stderr.write(`Nie znaleziono polecenia Codexa (${cfg.codexPath || 'codex'}). Sprawdź instalację (node install.mjs).\n`);
-    return { pendingFiles: pendingNow(), warnings, exitCode: 1 };
+    return { pendingFiles: pendingNow(), reviewed: [], warnings, exitCode: 1 };
   }
 
   const s0 = readState(ctx.stateDir);
@@ -165,15 +180,24 @@ export async function runManual(ctx, paths) {
       jobs.push({ stage, items: chunk, files, round });
     }
   }
-  if (!jobs.length) return { pendingFiles: pendingNow(), warnings, exitCode: 0 };
+  if (!jobs.length) return { pendingFiles: pendingNow(), reviewed: [], warnings, exitCode: 0 };
 
   // Codex bez blokady stanu; każde wywołanie ma własny katalog na plik wyniku (R10).
-  const deadline = codexDeadline(Date.now(), cfg.hookTimeoutSec);
+  const deadline = manualDeadline(Date.now(), cfg.hookTimeoutSec);
   const overrides = readWindowsOverrides();
-  const results = await Promise.all(jobs.map((job) => runJob(ctx, codexPath, job, { deadline, overrides, onSpawn: () => {} })));
+  // PID-y Codexa zapisane jak w stop.mjs, by osierocone procesy sprzątał killOrphans.
+  const pids = [];
+  const runs = jobs.map((job) => runJob(ctx, codexPath, job, { deadline, overrides, onSpawn: (pid) => pids.push(pid) }));
+  if (pids.length) {
+    await withState(ctx.stateDir, (s) => {
+      s.codexPids = [...(s.codexPids || []), ...pids.map((pid) => ({ pid, hookPid: process.pid, startedAt: Date.now() }))];
+    });
+  }
+  const results = await Promise.all(runs);
 
   let failed = false;
   await locked(ctx, (s) => {
+    s.codexPids = (s.codexPids || []).filter((e) => !pids.includes(typeof e === 'number' ? e : e?.pid));
     jobs.forEach((job, i) => {
       const r = results[i];
       if (!r.ok) {
@@ -199,7 +223,8 @@ export async function runManual(ctx, paths) {
       s.outstanding = (s.outstanding || []).filter((x) => !job.files.includes(x));
     });
   });
-  return { pendingFiles: pendingNow(), warnings, exitCode: failed ? 1 : 0 };
+  const reviewed = [...new Set(jobs.flatMap((j) => j.files))];
+  return { pendingFiles: pendingNow(), reviewed, warnings, exitCode: failed ? 1 : 0 };
 }
 
 const VALUE_FLAGS = new Set(['--stage', '--cwd']);
@@ -224,7 +249,9 @@ function parseArgs(argv) {
       o.paths.push(a);
     }
   }
-  if (o.paths.length && mode !== '--manual') throw new UsageError('Ścieżki są dozwolone tylko z --manual');
+  if (o.paths.length && mode !== '--manual' && !(mode === '--mark-reviewed' && o.final)) {
+    throw new UsageError('Ścieżki są dozwolone tylko z --manual albo --mark-reviewed --final');
+  }
   if (o.final && mode !== '--mark-reviewed') throw new UsageError('--final jest dozwolone tylko z --mark-reviewed');
   if (!o.cwd) throw new UsageError('Brak --cwd <katalog>');
   let isDir = false;
@@ -252,16 +279,18 @@ export async function runManualCli(argv, { readStdin, env = process.env } = {}) 
     const map = o.mode === '--save-display' ? parseDisplay(await readStdin()) : null;
     const ctx = makeContext(path.resolve(o.cwd), env);
     switch (o.mode) {
-      case '--mark-reviewed':
-        return { code: 0, stdout: `${await markReviewed(ctx, o.stage, { final: o.final })}\n` };
+      case '--mark-reviewed': {
+        const extra = o.final ? resolveRels(ctx, o.paths) : [];
+        return { code: 0, stdout: `${await markReviewed(ctx, o.stage, { final: o.final, extra })}\n` };
+      }
       case '--pending':
         return { code: 0, stdout: JSON.stringify(listPending(ctx)) };
       case '--save-display':
         await locked(ctx, () => saveDisplay(ctx.stateDir, o.stage, map));
         return { code: 0 };
       default: {
-        const { pendingFiles, warnings, exitCode } = await runManual(ctx, o.paths);
-        return { code: exitCode, stdout: exitCode === 2 ? undefined : JSON.stringify({ pendingFiles, warnings }) };
+        const { pendingFiles, reviewed, warnings, exitCode } = await runManual(ctx, o.paths);
+        return { code: exitCode, stdout: exitCode === 2 ? undefined : JSON.stringify({ pendingFiles, reviewed, warnings }) };
       }
     }
   } catch (e) {

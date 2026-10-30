@@ -242,8 +242,11 @@ export async function install(opts = {}, env = process.env) {
     if (hitTarget) {
       return { ok: false, errors: [`Katalog źródłowy (${src}) pokrywa się z katalogiem docelowym (${hitTarget}) lub zawiera go albo jest w nim zawarty. Sklonuj repozytorium poza ${path.join(baseDir(env), 'skills')}. Niczego nie zmieniono.`], messages };
     }
-    if (!fs.existsSync(path.join(helpSrc(src), 'SKILL.md'))) {
-      return { ok: false, errors: [`Brak skilla pomocy ${path.join(helpSrc(src), 'SKILL.md')} (external-review-help); repozytorium jest niekompletne. Niczego nie zmieniono.`], messages };
+    // Oba źródła sprawdzane przed jakąkolwiek zmianą — błąd nie zostawi nowej pomocy obok starego głównego skilla.
+    const missing = [path.join(helpSrc(src), 'SKILL.md'), path.join(src, 'SKILL.md'), path.join(src, 'hook.mjs')]
+      .filter((f) => !fs.existsSync(f));
+    if (missing.length) {
+      return { ok: false, errors: [`Brak pliku źródłowego: ${missing.join(', ')} (external-review / external-review-help); repozytorium jest niekompletne. Niczego nie zmieniono.`], messages };
     }
     const errors = await preflight(opts, env);
     if (errors.length) return { ok: false, errors, messages };

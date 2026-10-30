@@ -437,3 +437,19 @@ test('failed help-skill copy on update keeps the previous main skill and setting
     assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
   } finally { fs.copyFileSync = orig; t.cleanup(); }
 });
+
+test('source without hook.mjs: ok:false and the installed help skill stays unchanged', async () => {
+  const t = setup();
+  try {
+    assert.equal((await install(t.opts, t.env)).ok, true);
+    const helpMd = path.join(t.base, 'skills', 'external-review-help', 'SKILL.md');
+    const before = fs.readFileSync(helpMd, 'utf8');
+    const src = brokenSource(t, { dropHook: true });
+    fs.appendFileSync(path.join(path.dirname(src), 'external-review-help', 'SKILL.md'), '\nNOWA WERSJA POMOCY\n');
+    const r = await install({ ...t.opts, srcDir: src }, t.env);
+    assert.equal(r.ok, false);
+    assert.match(r.errors.join('\n'), /hook\.mjs/);
+    assert.equal(fs.readFileSync(helpMd, 'utf8'), before);
+    assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
+  } finally { t.cleanup(); }
+});

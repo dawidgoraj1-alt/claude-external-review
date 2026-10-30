@@ -128,6 +128,12 @@ Odpowiedz:
 - `/external-review` — w repozytorium git zrecenzuj wszystkie zmienione pliki kodu
   (poza gitem podaj ścieżki).
 
+Jawnie wskazane pliki są recenzowane mimo `ignorePatterns`/`ignoreDirs` (kto podaje plik, chce go
+zrecenzować; `.md` poza specyfikacjami i planami idzie jako kod). Pliki binarne i ponad limit
+rozmiaru są pomijane z ostrzeżeniem. Claude zawsze pokazuje ostrzeżenia i odróżnia „Codex
+przejrzał pliki — brak uwag” od „Nic nie zostało zrecenzowane”. Recenzja trwa zwykle kilka minut
+(najdłużej ok. 8); przy błędzie Codexa (kod 1) Claude pokaże błąd i zaproponuje ponowienie.
+
 ### 7. Aktualizacja
 
 ```
@@ -158,7 +164,7 @@ node install.mjs --uninstall --purge   # dodatkowo stan i config.local.json
   nie przepadają i trafią do kolejnej recenzji. Limity: `codexTimeoutSec` (jedno wywołanie)
   i `hookTimeoutSec` (cały hook; instalator ustawia go także we wpisie hooka Stop — po zmianie `hookTimeoutSec` w `config.local.json` uruchom ponownie `node install.mjs`, inaczej limit hooka Stop się nie zmieni).
 - **Wyłączenie skilla** — w `BASE/external-review/config.local.json` ustaw
-  `"enabled": false` (bez odinstalowywania). Wyłącza to automatyczną recenzję i śledzenie zmian (hooki niczego nie zapisują); ręczne `/external-review` nadal działa.
+  `"enabled": false` (bez odinstalowywania). To przełącznik **globalny** — dotyczy wszystkich projektów, nie ma opcji per projekt. Wyłącza to automatyczną recenzję i śledzenie zmian (hooki niczego nie zapisują); ręczne `/external-review` nadal działa.
 - **Nie znaleziono polecenia Codexa** — recenzja jest pomijana z ostrzeżeniem (raz na sesję), a pliki czekają na recenzję. Zainstaluj Codex CLI lub popraw `PATH` i uruchom ponownie `node install.mjs` (zapisuje `codexPath`).
 - **Brak reakcji po instalacji** — upewnij się, że zrestartowałeś Claude Code.
 
@@ -215,7 +221,8 @@ Każda recenzja to wywołania Codexa, które zużywają Twój limit/środki Open
 - Codex ma dostęp do **całego projektu** — to świadoma decyzja projektowa, bez list
   wykluczeń. Wszystko, co jest w projekcie, także sekrety, może zostać odczytane i wysłane
   do OpenAI. Nie używaj skilla tam, gdzie to niedopuszczalne (wyłącz automatyczną recenzję przez
-  `"enabled": false`; ręczne `/external-review` nadal wysyła dane, więc go nie uruchamiaj).
+  `"enabled": false` — przełącznik globalny, działa na wszystkie projekty, więc włącz go z powrotem
+  po pracy z takim projektem albo odinstaluj skill; ręczne `/external-review` nadal wysyła dane, więc go nie uruchamiaj).
 - Pliki, które edytuje Claude — **także `.env`, klucze i inne sekrety** — są wysyłane do
   Codexa w całości (lub jako diff) bezpośrednio w prompcie, a kopie ich przejrzanej treści
   zostają lokalnie w `BASE/external-review/state/`. `ignorePatterns` / `ignoreDirs` wyłączają

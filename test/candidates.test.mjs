@@ -311,3 +311,24 @@ test('touched entry added between the unlocked read and the merge is not lost', 
   await onPrompt({ session_id: S }, ctx);
   assert.deepEqual(readState(ctx.stateDir).outstanding, ['a.js']);
 });
+
+test('git project: no full-project walk — gitignored spec is not a candidate, untracked spec still is', async () => {
+  const repo = tmpRepo();
+  write(repo, '.gitignore', 'vendor/\n');
+  write(repo, 'a.js', '1\n');
+  commitAll(repo);
+  const ctx = ctxFor(repo, env());
+  await onPrompt({ session_id: S }, ctx);
+  write(repo, 'docs/specs/new-design.md', 'new');
+  write(repo, 'vendor/docs/specs/vendored.md', 'ignored by git');
+  const orig = fs.readdirSync;
+  let walks = 0;
+  fs.readdirSync = (...a) => {
+    if (String(a[0]).startsWith(repo)) walks++;
+    return orig(...a);
+  };
+  let got;
+  try { got = collectCandidates(ctx, readState(ctx.stateDir), S); } finally { fs.readdirSync = orig; }
+  assert.deepEqual(got, ['docs/specs/new-design.md']);
+  assert.equal(walks, 0, 'brak przeglądania katalogów projektu w repozytorium git');
+});

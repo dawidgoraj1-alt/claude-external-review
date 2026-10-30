@@ -54,3 +54,46 @@ test('help skill: user-only, lists every command and reply', () => {
     assert.ok(help.includes(s), s);
   }
 });
+
+test('manual mode tells Claude to run with Bash timeout 600000 (or background), never the default', () => {
+  assert.match(text, /timeout: 600000/);
+  assert.match(text, /w tle|run_in_background/);
+  assert.ok(!/do kilkunastu minut/.test(text), 'stale duration claim');
+});
+
+test('manual flow: always shows warnings, distinguishes reviewed-clean from nothing-reviewed, handles exit 1 and 2', () => {
+  assert.match(text, /`reviewed`/);
+  assert.match(text, /Codex przejrzał/);
+  assert.match(text, /Nic nie zostało zrecenzowane/);
+  assert.match(text, /Kod 1/);
+  assert.match(text, /Kod 2/);
+  assert.match(text, /zawsze pokaż[^\n]*ostrzeże/i);
+});
+
+test('README and help describe explicit paths bypassing ignore lists and the reviewed field', () => {
+  const readme = fs.readFileSync(path.join(path.dirname(file), '..', '..', 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+  const help = fs.readFileSync(path.join(path.dirname(file), '..', 'external-review-help', 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+  for (const doc of [readme, help]) {
+    assert.match(doc, /ignorePatterns[^\n]*jawnie wskazan|jawnie wskazan[^\n]*ignorePatterns/i);
+  }
+});
+
+test('docs: "enabled": false is global; help names the real config dir', () => {
+  const root = path.join(path.dirname(file), '..', '..');
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+  const help = fs.readFileSync(path.join(root, 'src', 'external-review-help', 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(readme, /globaln[^\n]*wszystkich projekt|wszystkich projekt[^\n]*globaln/i);
+  assert.match(help, /globaln[^\n]*wszystkich projekt|wszystkich projekt[^\n]*globaln/i);
+  assert.ok(!help.includes('Plik `~/.claude/external-review/config.local.json`'), 'hard-coded path');
+  assert.ok(help.includes('$CLAUDE_CONFIG_DIR/external-review/'));
+  assert.ok(help.includes('~/.claude/external-review/'));
+});
+
+test('--pending flow tells Claude to show warnings (corrupt pending file)', () => {
+  assert.match(text, /"warnings":\[…\][^\n]*uszkodzony plik pending/);
+  assert.match(text, /Pokaż ostrzeżenia użytkownikowi/);
+});
+
+test('step 6 tells Claude to pass extra changed files after --final', () => {
+  assert.match(text, /--final <ścieżka>/);
+});

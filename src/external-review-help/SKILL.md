@@ -16,7 +16,7 @@ Automatyczna recenzja Twojej pracy przez OpenAI Codex. Po każdej turze, w któr
 |---|---|
 | `/external-review-help` | ta pomoc |
 | `/external-review --pending` | pokazuje niezałatwione uwagi z poprzednich recenzji |
-| `/external-review <ścieżki…>` | recenzuje wskazane pliki teraz (bez progów i limitu rund) |
+| `/external-review <ścieżki…>` | recenzuje wskazane pliki teraz (bez progów i limitu rund; jawnie wskazane pliki omijają `ignorePatterns`/`ignoreDirs`, binarne i ponad limit są pomijane z ostrzeżeniem; trwa do ok. 8 min) |
 | `/external-review` | w repozytorium git recenzuje wszystkie niezacommitowane pliki kodu; poza gitem poprosi o ścieżki |
 
 ## Odpowiedzi na listę uwag
@@ -46,7 +46,7 @@ Aktualizacja: `git pull`, potem `node install.mjs`.
 
 ## Konfiguracja
 
-Plik `~/.claude/external-review/config.local.json` (nadpisuje domyślne wartości):
+Plik `config.local.json` leży w `$CLAUDE_CONFIG_DIR/external-review/` (gdy ustawiono `CLAUDE_CONFIG_DIR`), a w przeciwnym razie w `~/.claude/external-review/`; nadpisuje domyślne wartości:
 
 | Klucz | Domyślnie | Znaczenie |
 |---|---|---|
@@ -66,7 +66,7 @@ Plik `~/.claude/external-review/config.local.json` (nadpisuje domyślne wartośc
 - **Model niedostępny** — `node install.mjs --model <nazwa>` albo `--codex-default-model`.
 - **Po 2 awariach z rzędu** recenzje pauzują na 10 minut (`failureBackoffMin`).
 
-**Prywatność:** Codex widzi cały projekt, łącznie z `.env` i kluczami, i może je wysłać do OpenAI. W projektach z wrażliwymi danymi ustaw `"enabled": false`.
+**Prywatność:** Codex widzi cały projekt, łącznie z `.env` i kluczami, i może je wysłać do OpenAI. Przy wrażliwych danych ustaw `"enabled": false` — to przełącznik **globalny** (dotyczy wszystkich projektów, nie jednego), więc włącz go z powrotem po pracy z takim projektem albo odinstaluj skill. Ręczne `/external-review` nadal wysyła dane.
 
 Dokumentacja i kod: https://github.com/dawidgoraj1-alt/claude-external-review — autor: Dawid Góraj (MIT).
 

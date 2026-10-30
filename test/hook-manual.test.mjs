@@ -218,7 +218,7 @@ test('pending lists open pending files', () => {
   try {
     let r = t.cli(['--pending', '--cwd', t.repo]);
     assert.equal(r.status, 0, r.stderr);
-    assert.deepEqual(JSON.parse(r.stdout), { pendingFiles: [] });
+    assert.deepEqual(JSON.parse(r.stdout), { pendingFiles: [], warnings: [] });
     withSpecPending(t);
     r = t.cli(['--pending', '--cwd', t.repo]);
     const { pendingFiles } = JSON.parse(r.stdout);
@@ -303,5 +303,98 @@ test('mark-reviewed without saved display removes nothing and asks for --save-di
       assert.deepEqual(readPending(t.stateDir, 'spec').findings.map((f) => f.id), ['s-1']);
       assert.equal(t.state().files[rel].rounds, 1);
     }
+  } finally { t.cleanup(); }
+});
+
+test('manual: explicitly named files bypass ignorePatterns/ignoreDirs; .md outside spec/plan is reviewed as code', () => {
+  const t = setup();
+  try {
+    t.write('notes.md', '# Notatki\n\nTreść.\n');
+    t.write('node_modules/lib/x.js', lines(3));
+    const log = path.join(t.base, 'prompt.log');
+    t.env.FAKE_CODEX_LOG = log;
+    const r = t.cli(['--manual', '--cwd', t.repo, 'notes.md', 'node_modules/lib/x.js']);
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.warnings, []);
+    assert.deepEqual([...out.reviewed].sort(), ['node_modules/lib/x.js', 'notes.md']);
+    assert.equal(t.callCount(), 1);
+    assert.equal(readPending(t.stateDir, 'code').findings.length, 1);
+    assert.equal(readPending(t.stateDir, 'spec'), null);
+    assert.ok(fs.readFileSync(log, 'utf8').includes('notes.md'));
+  } finally { t.cleanup(); }
+});
+
+test('manual: JSON lists reviewed files; nothing sent → reviewed empty (also binary skipped with warning)', () => {
+  const t = setup();
+  try {
+    fs.writeFileSync(path.join(t.repo, 'img.bin'), Buffer.from([0, 1, 2, 0, 3]));
+    const r = t.cli(['--manual', '--cwd', t.repo, 'img.bin']);
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.reviewed, []);
+    assert.ok(out.warnings.some((w) => /binarn/.test(w)), out.warnings.join('|'));
+    assert.equal(t.callCount(), 0);
+  } finally { t.cleanup(); }
+});
+
+test('corrupt pending file: --pending and --mark-reviewed warn instead of silently ignoring it', () => {
+  const t = setup();
+  try {
+    withSpecPending(t);
+    const file = path.join(t.stateDir, 'pending-spec.json');
+    fs.writeFileSync(file, '{ to nie jest json');
+    let r = t.cli(['--pending', '--cwd', t.repo]);
+    assert.equal(r.status, 0, r.stderr);
+    let out = JSON.parse(r.stdout);
+    assert.deepEqual(out.pendingFiles, []);
+    assert.equal(out.warnings.length, 1);
+    assert.match(out.warnings[0], /pending-spec\.json/);
+    assert.match(out.warnings[0], /uszkodzon|nieczytelny/);
+    r = t.cli(['--mark-reviewed', '--stage', 'spec', '--cwd', t.repo]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /pending-spec\.json/);
+    assert.match(r.stdout, /uszkodzon|nieczytelny/);
+    // Zdrowy stan nie generuje ostrzeżeń.
+    fs.rmSync(file);
+    out = JSON.parse(t.cli(['--pending', '--cwd', t.repo]).stdout);
+    assert.deepEqual(out, { pendingFiles: [], warnings: [] });
+  } finally { t.cleanup(); }
+});
+
+test('mark-reviewed --final <paths> also marks extra changed files as reviewed at current content', () => {
+  const t = setup();
+  try {
+    const rel = withSpecPending(t);
+    t.cli(['--save-display', '--stage', 'spec', '--cwd', t.repo], '{"1":"s-1"}');
+    t.write(rel, '# Spec\n\nTreść.\n\nPoprawka.\n');
+    const extra = lines(30, 'x');
+    t.write('src/extra.js', extra); // plik zmieniony przy wprowadzaniu poprawek, poza uwagami
+    t.write('docs/ignored.log', 'x\n'); // plik ignorowany nie jest śledzony
+    const r = t.cli(['--mark-reviewed', '--stage', 'spec', '--cwd', t.repo, '--final', 'src/extra.js', 'docs/ignored.log']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /src\/extra\.js/);
+    const s = t.state();
+    assert.equal(s.files['src/extra.js'].reviewedHash, sha256(extra));
+    assert.equal(s.files['src/extra.js'].rounds, 0);
+    assert.equal(s.files['src/extra.js'].stage, 'code');
+    assert.equal(s.files['docs/ignored.log'], undefined);
+    assert.ok(fs.existsSync(path.join(t.stateDir, 'blobs', s.files['src/extra.js'].reviewedHash)));
+    const before = t.callCount();
+    assert.equal(t.stop(), null);
+    assert.equal(t.callCount(), before, 'extra file not re-reviewed');
+  } finally { t.cleanup(); }
+});
+
+test('paths are only allowed with --mark-reviewed --final; outside-project path → exit 2', () => {
+  const t = setup();
+  try {
+    withSpecPending(t);
+    t.cli(['--save-display', '--stage', 'spec', '--cwd', t.repo], '{"1":"s-1"}');
+    let r = t.cli(['--mark-reviewed', '--stage', 'spec', '--cwd', t.repo, 'src/x.js']);
+    assert.equal(r.status, 2);
+    r = t.cli(['--mark-reviewed', '--stage', 'spec', '--cwd', t.repo, '--final', '../poza.js']);
+    assert.equal(r.status, 2);
+    assert.equal(readPending(t.stateDir, 'spec').findings.length, 1, 'nic nie usunięto przy błędzie argumentów');
   } finally { t.cleanup(); }
 });

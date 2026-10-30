@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 import fs from 'node:fs';
 import path from 'node:path';
+import { toSlash } from './paths.mjs';
 
 const PREFIX = { spec: 's', plan: 'p', code: 'c' };
 const FILE_RE = /^pending-(spec|plan|code)\.json$/;
@@ -139,4 +140,19 @@ export function listPendingFiles(dir) {
       return !!p && p.findings.length > 0;
     })
     .map((n) => path.join(dir, n));
+}
+
+// Pliki pending-*.json, które istnieją, ale nie dają się wczytać (uszkodzone) — do ostrzeżeń dla użytkownika.
+export function corruptPendingFiles(dir, stage) {
+  let names;
+  try { names = fs.readdirSync(dir); } catch { return []; }
+  return names
+    .filter((n) => FILE_RE.test(n) && (!stage || n === `pending-${stage}.json`))
+    .sort()
+    .filter((n) => loadPending(dir, n.slice(8, -5)).corrupt === true)
+    .map((n) => path.join(dir, n));
+}
+
+export function corruptWarning(file) {
+  return `Plik uwag ${toSlash(file)} jest uszkodzony lub nieczytelny — zapisane w nim uwagi nie zostaną pokazane. Usuń lub napraw plik; kolejna recenzja zapisze uwagi od nowa.`;
 }

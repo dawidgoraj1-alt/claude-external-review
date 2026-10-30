@@ -56,12 +56,16 @@ export function collectCandidates(ctx, s, sessionId) {
         for (const rel of committedSince(ctx.root, sess.headSha)) out.add(rel);
       } catch { /* ignore */ }
     }
-    const since = (sess.startedAt || 0) - MTIME_SLACK_MS;
-    const cfg = ctx.config;
-    for (const f of walk(ctx.root, { ignoreDirs: cfg.ignoreDirs, nocase: ctx.nocase, maxFiles: WALK_MAX_FILES })) {
-      if (f.mtimeMs < since) continue;
-      const kind = classify(f.rel, cfg, ctx.nocase);
-      if (kind === 'spec' || kind === 'plan') out.add(f.rel);
+    // W git status (z nieśledzonymi) i committedSince już mieszczą się pliki spec/plan; pełne przeszukiwanie
+    // katalogów (z vendor/, .idea/ itp.) zostaje tylko dla projektów bez gita.
+    if (!ctx.isGit) {
+      const since = (sess.startedAt || 0) - MTIME_SLACK_MS;
+      const cfg = ctx.config;
+      for (const f of walk(ctx.root, { ignoreDirs: cfg.ignoreDirs, nocase: ctx.nocase, maxFiles: WALK_MAX_FILES })) {
+        if (f.mtimeMs < since) continue;
+        const kind = classify(f.rel, cfg, ctx.nocase);
+        if (kind === 'spec' || kind === 'plan') out.add(f.rel);
+      }
     }
   }
   return [...out].sort();
