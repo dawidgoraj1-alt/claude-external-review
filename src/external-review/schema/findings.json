@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "findings"],
+  "properties": {
+    "summary": { "type": "string" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "location", "problem", "suggestion"],
+        "properties": {
+          "id": { "type": "integer" },
+          "severity": { "type": "string", "enum": ["critical", "important", "minor"] },
+          "location": { "type": "string" },
+          "problem": { "type": "string" },
+          "suggestion": { "type": "string" }
+        }
+      }
+    }
+  }
+}

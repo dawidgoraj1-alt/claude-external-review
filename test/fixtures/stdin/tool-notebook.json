@@ -1,0 +1,10 @@
+{
+  "session_id": "sess-1",
+  "transcript_path": "/tmp/transcript.jsonl",
+  "cwd": "/project",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "NotebookEdit",
+  "tool_input": { "notebook_path": "/project/nb.ipynb", "new_source": "print(1)", "cell_id": "c1" },
+  "tool_response": {}
+}

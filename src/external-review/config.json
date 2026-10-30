@@ -1,0 +1,23 @@
+{
+  "configVersion": 1,
+  "enabled": true,
+  "codexPath": null,
+  "model": "gpt-6-sol",
+  "reasoningEffort": "medium",
+  "codexSandbox": "workspace-write",
+  "ignoreUserConfig": true,
+  "codexConfigOverrides": [],
+  "codexTimeoutSec": 600,
+  "hookTimeoutSec": 900,
+  "failureBackoffMin": 10,
+  "codeMinChangedLines": 20,
+  "maxReviewRounds": 3,
+  "maxReviewBytes": 204800,
+  "maxChunks": 3,
+  "specPatterns": ["**/specs/**/*.md", "**/*-design.md", "**/*-spec.md", "**/spec.md"],
+  "planPatterns": ["**/plans/**/*.md", "**/*-plan.md", "**/plan.md"],
+  "ignorePatterns": ["**/*.md", "**/*.log", "**/package-lock.json", "**/yarn.lock",
+                     "**/pnpm-lock.yaml", "**/.coverage"],
+  "ignoreDirs": ["node_modules", ".git", "dist", "build", "coverage", "__pycache__",
+                 ".pytest_cache", ".venv", ".next", "target"]
+}

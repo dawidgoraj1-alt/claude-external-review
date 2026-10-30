@@ -1,0 +1,10 @@
+{
+  "session_id": "sess-1",
+  "transcript_path": "/tmp/transcript.jsonl",
+  "cwd": "/project",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": { "file_path": "/project/src/a.js", "content": "x\n" },
+  "tool_response": { "filePath": "/project/src/a.js", "success": true }
+}
