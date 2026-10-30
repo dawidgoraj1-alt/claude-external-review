@@ -22,6 +22,11 @@ test('describeEvent: command, file reads and truncation', () => {
   assert.equal(describeEvent(item('command_execution', { command: 'sed -n 1,80p src/lib/codex.mjs' })).action, 'czyta codex.mjs');
   assert.equal(describeEvent(item('command_execution', { command: '"C:\\Windows\\pwsh.exe" -Command "Get-Content -Raw src\\lib\\paths.mjs"' })).action, 'czyta paths.mjs');
   assert.equal(describeEvent(item('command_execution', { command: 'rg -n foo C:\\proj\\src\\x.js' })).action, 'czyta x.js');
+  // Opakowanie powłoki (Windows: powershell.exe -Command, Unix: bash -lc) jest zdejmowane przed opisem.
+  assert.equal(describeEvent(item('command_execution', { command: '"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command \'npm test\'' })).action, 'uruchamia npm test');
+  assert.equal(describeEvent(item('command_execution', { command: '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoProfile -Command "Get-ChildItem src"' })).action, 'uruchamia Get-ChildItem src');
+  assert.equal(describeEvent(item('command_execution', { command: '/bin/bash -lc "ls -la"' })).action, 'uruchamia ls -la');
+  assert.equal(describeEvent(item('command_execution', { command: 'cmd.exe /c "dir"' })).action, 'uruchamia dir');
   const long = describeEvent(item('command_execution', { command: 'node ' + 'a'.repeat(100) })).action;
   assert.equal(long, 'uruchamia ' + ('node ' + 'a'.repeat(100)).slice(0, 40));
 });

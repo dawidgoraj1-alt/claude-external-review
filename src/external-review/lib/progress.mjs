@@ -23,9 +23,20 @@ function readTarget(command) {
   return null;
 }
 
+// Codex owija polecenia w powłokę (Windows: "…\powershell.exe" -Command '…', Unix: bash -lc "…"); pokazujemy samo polecenie.
+const SHELL_WRAP = /^"?(?:[^"\s]*[\\/])?(?:[^"\\/]*[\\/])*(?:powershell|pwsh|cmd|bash|sh|zsh)(?:\.exe)?"?(?:\s+-(?:NoProfile|NoLogo|NonInteractive))*\s+(?:-Command|-c|-lc|\/c)\s+/i;
+
+function unwrapShell(c) {
+  const m = SHELL_WRAP.exec(c);
+  if (!m) return c;
+  const rest = c.slice(m[0].length).trim();
+  const q = rest[0];
+  return (q === '"' || q === "'") && rest.endsWith(q) && rest.length > 1 ? rest.slice(1, -1).trim() : rest;
+}
+
 function commandAction(command) {
   if (typeof command !== 'string' || !command.trim()) return null;
-  const c = command.trim();
+  const c = unwrapShell(command.trim());
   if (READERS.test(c)) {
     const f = readTarget(c);
     if (f) return `czyta ${f}`;
