@@ -204,6 +204,46 @@ Domyślne wartości są w `config.json` skilla; własne nadpisania wpisz do
 | `ignorePatterns` | `**/*.md`, `**/*.log`, `**/package-lock.json`, `**/yarn.lock`, `**/pnpm-lock.yaml`, `**/.coverage` | pliki pomijane w recenzji kodu |
 | `ignoreDirs` | `node_modules`, `.git`, `dist`, `build`, `coverage`, `__pycache__`, `.pytest_cache`, `.venv`, `.next`, `target` | katalogi pomijane |
 
+## Podgląd pracy Codexa
+
+Gdy Codex recenzuje (hook Stop albo ręczne `/external-review`), w linii statusu Claude Code
+możesz zobaczyć, co robi:
+
+```
+⟳ Codex · kod (3 pliki) · 1:12 · czyta stop.mjs · 18k tok
+```
+
+Widać etapy (specyfikacja, plan, kod), liczbę plików, czas, bieżącą czynność i zużyte tokeny.
+Skill zapisuje postęp w `BASE/external-review/live/` (jeden mały plik na działający proces,
+usuwany po recenzji; nieodświeżany plik starszy niż 15 s jest ignorowany), a segment czyta ten
+katalog bez gita i bez przeszukiwania projektu. Gdy nic nie działa, segment jest pusty.
+
+Włączenie (jeśli nie masz jeszcze własnej linii statusu):
+
+```
+node install.mjs --statusline
+```
+
+Instalator wpisuje wtedy `statusLine` z `"refreshInterval": 1` (Claude Code odświeża linię co
+sekundę, także w trakcie długiego hooka Stop). Jeśli masz już własny `statusLine`, instalator go
+nie zmienia, tylko wypisuje wpis do wklejenia; zwykła instalacja (bez `--statusline`) nigdy nie
+rusza `statusLine`. `--uninstall` usuwa `statusLine` tylko wtedy, gdy jest nasz.
+
+Własna linia statusu — dołącz segment w Node:
+
+```js
+import { codexSegment } from '<BASE>/skills/external-review/statusline.mjs';
+const seg = codexSegment(workspaceDir); // '' gdy Codex nic nie robi
+```
+
+albo uruchom skrypt `node "<BASE>/skills/external-review/statusline.mjs"` z tym samym JSON-em
+ze stdin, który dostaje Twoja linia statusu (czyta `workspace.current_dir`), i dołącz jego
+wyjście. Ustaw `"refreshInterval": 1` w swoim `statusLine`, inaczej segment nie będzie się
+odświeżał w trakcie recenzji.
+
+Uwaga: tekst „Codex recenzuje…” obok spinnera pochodzi z Claude Code i hooki nie mogą go zmienić;
+żywy postęp jest dlatego w linii statusu.
+
 ## Koszty i limity
 
 Każda recenzja to wywołania Codexa, które zużywają Twój limit/środki OpenAI:

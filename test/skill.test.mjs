@@ -50,7 +50,7 @@ test('help skill: user-only, lists every command and reply', () => {
   assert.match(fm, /^name: external-review-help$/m);
   assert.match(fm, /^disable-model-invocation: true$/m);
   for (const s of ['/external-review-help', '/external-review --pending', '/external-review <ścieżki…>', '`1, 3`', '`wszystkie`',
-    '`żadne`', '`zakończ recenzję`', 'node install.mjs --uninstall --purge', '--codex-default-model', 'config.local.json', '"enabled": false']) {
+    '`żadne`', '`zakończ recenzję`', 'node install.mjs --uninstall --purge', '--codex-default-model', '--statusline', 'config.local.json', '"enabled": false']) {
     assert.ok(help.includes(s), s);
   }
 });
@@ -96,4 +96,9 @@ test('--pending flow tells Claude to show warnings (corrupt pending file)', () =
 
 test('step 6 tells Claude to pass extra changed files after --final', () => {
   assert.match(text, /--final <ścieżka>/);
+});
+
+test('README documents the live Codex indicator', () => {
+  const readme = fs.readFileSync(path.join(path.dirname(file), '..', '..', 'README.md'), 'utf8');
+  for (const s of ['## Podgląd pracy Codexa', '--statusline', 'codexSegment', 'refreshInterval', 'Codex recenzuje…']) assert.ok(readme.includes(s), s);
 });

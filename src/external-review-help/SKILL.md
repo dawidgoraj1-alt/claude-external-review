@@ -38,6 +38,7 @@ Automatyczna recenzja Twojej pracy przez OpenAI Codex. Po każdej turze, w któr
 | `node install.mjs` | instaluje lub aktualizuje skill i hooki (potem zrestartuj Claude Code) |
 | `node install.mjs --model <nazwa>` | instaluje z innym modelem Codexa |
 | `node install.mjs --codex-default-model` | używa domyślnego modelu Twojego Codexa |
+| `node install.mjs --statusline` | dodatkowo włącza w linii statusu podgląd pracy Codexa (np. `⟳ Codex · kod (3 pliki) · 1:12 · czyta stop.mjs · 18k tok`); cudzego `statusLine` nie zmienia |
 | `node install.mjs --uninstall` | usuwa hooki i skill |
 | `node install.mjs --uninstall --purge` | dodatkowo usuwa stan recenzji i `config.local.json` |
 | `npm test` | uruchamia testy skilla |

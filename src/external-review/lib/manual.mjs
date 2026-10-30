@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { classify, fileHash } from './candidates.mjs';
 import { readWindowsOverrides } from './codex.mjs';
+import { matchAny } from './glob.mjs';
 import { headSha, statusPaths } from './git.mjs';
 import { makeContext } from './context.mjs';
 import { buildItems, chunkItems } from './material.mjs';
 import { appendRound, attributedFiles, clearDisplayed, corruptPendingFiles, corruptWarning, listPendingFiles, readPending, saveDisplay } from './pending.mjs';
 import { canonical, relTo, toSlash } from './paths.mjs';
-import { codexDeadline, markFileReviewed, resolveCodexPath, runJob } from './stop.mjs';
+import { codexDeadline, markFileReviewed, resolveCodexPath, runJobsLive } from './stop.mjs';
 import { readState, withState, writeBlob } from './state.mjs';
 import { isBinary, normalizeText, sha256 } from './text.mjs';
 
@@ -147,7 +148,14 @@ export async function runManual(ctx, paths) {
   const review = { spec: [], plan: [], code: [] };
   for (const rel of rels) {
     // Jawnie wskazana ścieżka omija ignorePatterns/ignoreDirs; plik poza spec/plan jest recenzowany jako kod.
-    const stage = classify(rel, cfg, ctx.nocase) || 'code';
+    // Wzorce spec/plan sprawdzane przed ignoreDirs (classify odrzuca ignoreDirs jako pierwsze).
+    const o = { nocase: ctx.nocase };
+    let stage;
+    if (explicit) {
+      stage = matchAny(rel, cfg.specPatterns || [], o) ? 'spec' : matchAny(rel, cfg.planPatterns || [], o) ? 'plan' : 'code';
+    } else {
+      stage = classify(rel, cfg, ctx.nocase) || 'code';
+    }
     review[stage].push(rel);
   }
   if (!STAGES.some((st) => review[st].length)) return { pendingFiles: pendingNow(), reviewed: [], warnings, exitCode: 0 };
@@ -187,13 +195,7 @@ export async function runManual(ctx, paths) {
   const overrides = readWindowsOverrides();
   // PID-y Codexa zapisane jak w stop.mjs, by osierocone procesy sprzątał killOrphans.
   const pids = [];
-  const runs = jobs.map((job) => runJob(ctx, codexPath, job, { deadline, overrides, onSpawn: (pid) => pids.push(pid) }));
-  if (pids.length) {
-    await withState(ctx.stateDir, (s) => {
-      s.codexPids = [...(s.codexPids || []), ...pids.map((pid) => ({ pid, hookPid: process.pid, startedAt: Date.now() }))];
-    });
-  }
-  const results = await Promise.all(runs);
+  const results = await runJobsLive(ctx, jobs, codexPath, { deadline, overrides, pids }, ctx.stateDir);
 
   let failed = false;
   await locked(ctx, (s) => {

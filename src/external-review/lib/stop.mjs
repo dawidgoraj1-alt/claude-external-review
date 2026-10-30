@@ -10,6 +10,7 @@ import { buildItems, chunkItems, meetsThreshold } from './material.mjs';
 import { blockOutput, messageOutput } from './output.mjs';
 import { appendRound, attributedFiles, listPendingFiles, pendingPath } from './pending.mjs';
 import { renderPrompt } from './prompt.mjs';
+import { startLive } from './live.mjs';
 import { skillDir, toSlash } from './paths.mjs';
 import { readState, withState, writeBlob } from './state.mjs';
 
@@ -167,7 +168,7 @@ function finish(ctx, { lines = [], warnings = [] }) {
 }
 
 // Jedno wywołanie Codexa dla porcji; własny katalog tymczasowy na plik wyniku (R10).
-export async function runJob(ctx, codexPath, job, { deadline, overrides, onSpawn }) {
+export async function runJob(ctx, codexPath, job, { deadline, overrides, onSpawn, onEvent }) {
   const cfg = ctx.config;
   let tmp = null;
   try {
@@ -179,11 +180,31 @@ export async function runJob(ctx, codexPath, job, { deadline, overrides, onSpawn
     const prompt = renderPrompt(job.stage, { items: job.items, round: job.round, cfg });
     const schemaPath = path.join(skillDir(), 'schema', 'findings.json');
     const args = buildArgs(cfg, { cwd: ctx.root, schemaPath, outPath, overrides });
-    return await runCodex({ codexPath, args, prompt, timeoutMs, onSpawn });
+    return await runCodex({ codexPath, args, prompt, timeoutMs, onSpawn, onEvent });
   } catch (e) {
     return { ok: false, error: e?.message || String(e) };
   } finally {
     if (tmp) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
+  }
+}
+
+// Uruchamia zadania równolegle z plikiem postępu „na żywo” (zawsze sprzątanym w finally)
+// i zapisuje PID-y Codexa w stanie (sprzątanie osieroconych procesów).
+export async function runJobsLive(ctx, jobs, codexPath, { deadline, overrides, pids }, stateDir) {
+  const live = startLive({ root: ctx.root, env: ctx.env });
+  try {
+    const runs = jobs.map((job) => {
+      const h = live.addJob(job);
+      return runJob(ctx, codexPath, job, { deadline, overrides, onSpawn: (pid) => pids.push(pid), onEvent: h.onEvent }).finally(h.done);
+    });
+    if (pids.length) {
+      await withState(stateDir, (s) => {
+        s.codexPids = [...(s.codexPids || []), ...pids.map((pid) => ({ pid, hookPid: process.pid, startedAt: Date.now() }))];
+      });
+    }
+    return await Promise.all(runs);
+  } finally {
+    live.stop();
   }
 }
 
@@ -321,13 +342,7 @@ export async function runStop(input, ctx) {
   const deadline = codexDeadline(start, cfg.hookTimeoutSec);
   const overrides = readWindowsOverrides();
   const pids = [];
-  const runs = jobs.map((job) => runJob(ctx, codexPath, job, { deadline, overrides, onSpawn: (pid) => pids.push(pid) }));
-  if (pids.length) {
-    await withState(dir, (s) => {
-      s.codexPids = [...(s.codexPids || []), ...pids.map((pid) => ({ pid, hookPid: process.pid, startedAt: Date.now() }))];
-    });
-  }
-  const results = await Promise.all(runs);
+  const results = await runJobsLive(ctx, jobs, codexPath, { deadline, overrides, pids }, dir);
   const after = before ? safeSnapshot(ctx) : null;
   const changed = before && after ? changedBetween(before, after, cfg, ctx.nocase) : [];
   const changedHashes = Object.fromEntries(changed.map((rel) => [rel, fileHash(ctx.root, rel)]));

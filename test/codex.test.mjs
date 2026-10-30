@@ -33,7 +33,7 @@ test('buildArgs contains required flags in order', () => {
   const a = buildArgs(cfg, { cwd: '/p', schemaPath: '/s.json', outPath: '/o.json', overrides: ['windows.sandbox="unelevated"'] });
   assert.deepEqual(a, ['exec', '-m', 'gpt-6-sol', '-c', 'model_reasoning_effort=medium', '--ignore-user-config',
     '-c', 'windows.sandbox="unelevated"', '--color', 'never', '-s', 'workspace-write', '--ephemeral',
-    '--skip-git-repo-check', '-C', '/p', '--output-schema', '/s.json', '-o', '/o.json', '-']);
+    '--skip-git-repo-check', '--json', '-C', '/p', '--output-schema', '/s.json', '-o', '/o.json', '-']);
 });
 test('buildArgs omits -m when model null', () => {
   const a = buildArgs({ ...cfg, model: null }, { cwd: '/p', schemaPath: 's', outPath: 'o', overrides: [] });

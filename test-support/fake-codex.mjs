@@ -6,7 +6,7 @@ const argv = process.argv.slice(2);
 const arg = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 // Podkomendy pomocnicze instalatora: `--help` i `login status` (bez czytania stdin).
 if (argv.includes('--help')) {
-  const flags = ['--output-schema', '--ephemeral', '--ignore-user-config'].filter((f) => f !== process.env.FAKE_CODEX_HELP_MISSING);
+  const flags = ['--output-schema', '--ephemeral', '--ignore-user-config', '--json'].filter((f) => f !== process.env.FAKE_CODEX_HELP_MISSING);
   process.stdout.write(`Usage: codex exec [OPTIONS]\n${flags.map((f) => `      ${f}\n`).join('')}`);
   process.exit(0);
 }
@@ -38,6 +38,23 @@ if (env.FAKE_CODEX_SLEEP_MATCH && prompt.includes(env.FAKE_CODEX_SLEEP_MATCH)) {
 }
 
 const mode = env.FAKE_CODEX_MODE || 'ok';
+// Z --json: kilka zdarzeń JSONL na stdout (jak codex exec --json); FAKE_CODEX_EVENT_MS = przerwa między nimi.
+if (argv.includes('--json')) {
+  const events = [
+    { type: 'thread.started', thread_id: 't1' },
+    { type: 'turn.started' },
+    { type: 'item.started', item: { id: 'i1', type: 'reasoning' } },
+    { type: 'item.started', item: { id: 'i2', type: 'command_execution', command: 'cat src/stop.mjs' } },
+    { type: 'item.completed', item: { id: 'i2', type: 'command_execution', command: 'cat src/stop.mjs' } },
+    { type: 'item.completed', item: { id: 'i3', type: 'agent_message' } },
+    { type: 'turn.completed', usage: { input_tokens: 1000, cached_input_tokens: 400, output_tokens: 200 } },
+  ];
+  const gap = Number(env.FAKE_CODEX_EVENT_MS || 0);
+  for (const e of events) {
+    process.stdout.write(`${JSON.stringify(e)}\n`);
+    if (gap) await new Promise((r) => setTimeout(r, gap));
+  }
+}
 const write = (obj) => fs.writeFileSync(outPath, JSON.stringify(obj), 'utf8');
 
 switch (mode) {

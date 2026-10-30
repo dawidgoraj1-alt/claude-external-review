@@ -398,3 +398,17 @@ test('paths are only allowed with --mark-reviewed --final; outside-project path 
     assert.equal(readPending(t.stateDir, 'spec').findings.length, 1, 'nic nie usunięto przy błędzie argumentów');
   } finally { t.cleanup(); }
 });
+
+test('manual: explicit spec/plan path inside an ignoreDir is reviewed as spec/plan, not code', () => {
+  const t = setup();
+  try {
+    t.write('build/specs/x-design.md', '# Projekt\n\nTreść.\n');
+    t.write('dist/plans/y-plan.md', '# Plan\n\nTreść.\n');
+    const r = t.cli(['--manual', '--cwd', t.repo, 'build/specs/x-design.md', 'dist/plans/y-plan.md']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual([...JSON.parse(r.stdout).reviewed].sort(), ['build/specs/x-design.md', 'dist/plans/y-plan.md']);
+    assert.equal(readPending(t.stateDir, 'spec').findings.length, 1);
+    assert.equal(readPending(t.stateDir, 'plan').findings.length, 1);
+    assert.equal(readPending(t.stateDir, 'code'), null);
+  } finally { t.cleanup(); }
+});

@@ -14,7 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, 'src', 'external-review');
 // Skill /external-review-help leży obok głównego (src/external-review-help).
 const helpSrc = (src) => path.join(path.dirname(src), 'external-review-help');
-const REQUIRED_FLAGS = ['--output-schema', '--ephemeral', '--ignore-user-config'];
+const REQUIRED_FLAGS = ['--output-schema', '--ephemeral', '--ignore-user-config', '--json'];
 const TOOL_MATCHER = 'Write|Edit|MultiEdit|NotebookEdit';
 
 // Ścieżki hooków muszą być bezwzględne, więc BASE jest rozwiązywany względem cwd.
@@ -31,6 +31,37 @@ function overlaps(a, b) {
   const n = (p) => { const x = toSlash(canonical(p)).replace(/\/+$/, ''); return ci ? x.toLowerCase() : x; };
   const x = n(a); const y = n(b);
   return x === y || x.startsWith(`${y}/`) || y.startsWith(`${x}/`);
+}
+
+const SL_RE = /^node "[^"]*skills\/external-review\/statusline\.mjs"$/;
+const SL_RE_CI = new RegExp(SL_RE.source, 'i');
+
+function statuslineCommand(env) {
+  return `node "${toSlash(path.join(skillTarget(env), 'statusline.mjs'))}"`;
+}
+
+function isOwnStatusline(sl) {
+  if (!sl || typeof sl !== 'object' || typeof sl.command !== 'string') return false;
+  return (process.platform === 'win32' || process.platform === 'darwin' ? SL_RE_CI : SL_RE).test(toSlash(sl.command));
+}
+
+// --statusline: ustawia statusLine tylko gdy go nie ma lub jest nasz; cudzego nie rusza.
+function applyStatusline(settings, env, messages) {
+  const cmd = statuslineCommand(env);
+  if (settings.statusLine === undefined || settings.statusLine === null) {
+    settings.statusLine = { type: 'command', command: cmd, refreshInterval: 1 };
+    messages.push('Włączono podgląd pracy Codexa w linii statusu (statusLine w settings.json).');
+  } else if (isOwnStatusline(settings.statusLine)) {
+    settings.statusLine = { ...settings.statusLine, type: 'command', command: cmd, refreshInterval: 1 };
+    messages.push('Odświeżono wpis statusLine (podgląd pracy Codexa).');
+  } else {
+    const snippet = JSON.stringify({ statusLine: { type: 'command', command: cmd, refreshInterval: 1 } });
+    messages.push(
+      'Masz już własną linię statusu (statusLine) — nie zmieniłem jej. Aby zobaczyć postęp Codexa, dołącz w niej wynik skryptu statusline.mjs',
+      `(na wejście skryptu podaj JSON linii statusu) albo zaimportuj codexSegment z ${toSlash(path.join(skillTarget(env), 'statusline.mjs'))} (zob. README) i ustaw "refreshInterval": 1.`,
+      `Gotowy wpis, gdybyś chciał zastąpić swój: ${snippet}`,
+    );
+  }
 }
 
 function hookCommand(env, event) {
@@ -243,8 +274,8 @@ export async function install(opts = {}, env = process.env) {
       return { ok: false, errors: [`Katalog źródłowy (${src}) pokrywa się z katalogiem docelowym (${hitTarget}) lub zawiera go albo jest w nim zawarty. Sklonuj repozytorium poza ${path.join(baseDir(env), 'skills')}. Niczego nie zmieniono.`], messages };
     }
     // Oba źródła sprawdzane przed jakąkolwiek zmianą — błąd nie zostawi nowej pomocy obok starego głównego skilla.
-    const missing = [path.join(helpSrc(src), 'SKILL.md'), path.join(src, 'SKILL.md'), path.join(src, 'hook.mjs')]
-      .filter((f) => !fs.existsSync(f));
+    const missing = [path.join(helpSrc(src), 'SKILL.md'), path.join(src, 'SKILL.md'), path.join(src, 'hook.mjs'), path.join(src, 'statusline.mjs')]
+      .filter((f) => { try { return !fs.lstatSync(f).isFile(); } catch { return true; } }); // copyDir pomija dowiązania
     if (missing.length) {
       return { ok: false, errors: [`Brak pliku źródłowego: ${missing.join(', ')} (external-review / external-review-help); repozytorium jest niekompletne. Niczego nie zmieniono.`], messages };
     }
@@ -270,6 +301,7 @@ export async function install(opts = {}, env = process.env) {
     const s = settings || {};
     stripOwn(s);
     addOwn(s, env, loadConfig(env).hookTimeoutSec);
+    if (opts.statusline) applyStatusline(s, env, messages);
     writeSettings(env, s, settings !== null);
     messages.push(`Zainstalowano w ${target} (pomoc: /external-review-help).`, `Codex: ${codexPath}`, 'Zrestartuj Claude Code, aby hooki zaczęły działać.');
     return { ok: true, errors: [], messages };
@@ -287,9 +319,18 @@ export async function uninstall(opts = {}, env = process.env) {
     const hit = targets.find((t) => overlaps(src, t));
     if (hit) return { ok: false, errors: [`Katalog źródłowy instalatora (${src}) pokrywa się z ${hit} lub jest z nim zagnieżdżony; usunięcie skasowałoby repozytorium. Uruchom deinstalację z kopii repozytorium poza BASE. Niczego nie zmieniono.`], messages };
     const settings = readSettings(env);
-    if (settings && stripOwn(settings)) {
-      writeSettings(env, settings, true);
-      messages.push('Usunięto wpisy hooków z settings.json.');
+    if (settings) {
+      const hooksChanged = stripOwn(settings);
+      // Usuwany tylko wpis tej instalacji (dokładnie ta ścieżka); wpis innego BASE zostaje.
+      const ci = process.platform === 'win32' || process.platform === 'darwin';
+      const norm = (c) => (ci ? toSlash(c).toLowerCase() : toSlash(c));
+      const slOwn = isOwnStatusline(settings.statusLine) && norm(settings.statusLine.command) === norm(statuslineCommand(env));
+      if (slOwn) delete settings.statusLine;
+      if (hooksChanged || slOwn) {
+        writeSettings(env, settings, true);
+        if (hooksChanged) messages.push('Usunięto wpisy hooków z settings.json.');
+        if (slOwn) messages.push('Usunięto wpis statusLine (podgląd pracy Codexa).');
+      }
     }
     fs.rmSync(skillTarget(env), { recursive: true, force: true });
     fs.rmSync(helpTarget(env), { recursive: true, force: true });
@@ -312,6 +353,7 @@ export function parseArgs(argv) {
     if (a === '--model') { o.model = argv[++i]; if (!o.model) throw new Error('--model wymaga nazwy modelu.'); }
     else if (a === '--codex-default-model') o.codexDefaultModel = true;
     else if (a === '--uninstall') o.uninstall = true;
+    else if (a === '--statusline') o.statusline = true;
     else if (a === '--purge') o.purge = true;
     else if (a === '--skip-preflight-call') o.skipPreflightCall = true;
     else throw new Error(`Nieznany argument: ${a}`);

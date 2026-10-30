@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createLineParser } from './progress.mjs';
 
 const SEVERITIES = ['critical', 'important', 'minor'];
 
@@ -43,7 +44,7 @@ export function buildArgs(cfg, o) {
   args.push('-c', `model_reasoning_effort=${cfg.reasoningEffort}`);
   if (cfg.ignoreUserConfig) args.push('--ignore-user-config');
   for (const ov of [...(o.overrides || []), ...(cfg.codexConfigOverrides || [])]) args.push('-c', ov);
-  args.push('--color', 'never', '-s', cfg.codexSandbox, '--ephemeral', '--skip-git-repo-check',
+  args.push('--color', 'never', '-s', cfg.codexSandbox, '--ephemeral', '--skip-git-repo-check', '--json',
     '-C', o.cwd, '--output-schema', o.schemaPath, '-o', o.outPath, '-');
   return args;
 }
@@ -157,7 +158,8 @@ export function runCodex(o) {
     try { child = spawn(file, args, opts); } catch (e) { return finish({ ok: false, error: `nie można uruchomić Codexa: ${e.message}` }); }
     child.on('error', (e) => finish({ ok: false, error: `nie można uruchomić Codexa: ${e.message}` }));
     if (child.pid && o.onSpawn) { try { o.onSpawn(child.pid); } catch { /* ignored */ } }
-    child.stdout.on('data', () => {});
+    const parser = createLineParser((evt) => { if (o.onEvent) o.onEvent(evt); });
+    child.stdout.on('data', (d) => { if (o.onEvent) parser.write(d); });
     child.stderr.on('data', (d) => { if (stderr.length < 2000) stderr += d.toString('utf8'); });
     child.stdin.on('error', () => {});
     child.stdin.end(Buffer.from(o.prompt, 'utf8'));
@@ -166,6 +168,7 @@ export function runCodex(o) {
       finish({ ok: false, error: `timeout po ${o.timeoutMs} ms` });
     }, o.timeoutMs);
     child.on('close', (code) => {
+      parser.end();
       if (code !== 0) return finish({ ok: false, error: `Codex zakończył się kodem ${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 300)}` : ''}` });
       if (!outPath) return finish({ ok: false, error: 'brak pliku wyniku' });
       finish(readResult(outPath));

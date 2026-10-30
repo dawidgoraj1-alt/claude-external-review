@@ -36,6 +36,7 @@ export function makeContext(rawCwd, env = process.env, opts = {}) {
     cwd,
     root,
     isGit,
+    env,
     config: loadConfig(env),
     stateDir: stateDirFor(root, env),
     nocase,

@@ -453,3 +453,97 @@ test('source without hook.mjs: ok:false and the installed help skill stays uncha
     assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
   } finally { t.cleanup(); }
 });
+
+const slCmd = (base) => hookOf(base).replace('hook.mjs', 'statusline.mjs');
+
+test('--statusline sets statusLine when none exists; plain install never touches it', async () => {
+  const t = setup();
+  try {
+    assert.equal((await install(t.opts, t.env)).ok, true);
+    assert.equal('statusLine' in readSettings(t.base), false);
+    const r = await install({ ...t.opts, statusline: true }, t.env);
+    assert.equal(r.ok, true, r.errors.join());
+    assert.deepEqual(readSettings(t.base).statusLine, { type: 'command', command: `node "${slCmd(t.base)}"`, refreshInterval: 1 });
+    assert.ok(fs.existsSync(path.join(t.base, 'skills', 'external-review', 'statusline.mjs')));
+    // zwykła instalacja nie rusza własnego wpisu
+    const before = readSettings(t.base).statusLine;
+    await install(t.opts, t.env);
+    assert.deepEqual(readSettings(t.base).statusLine, before);
+  } finally { t.cleanup(); }
+});
+test('--statusline leaves a foreign statusLine alone and prints the snippet', async () => {
+  const t = setup();
+  try {
+    fs.writeFileSync(settingsFile(t.base), JSON.stringify({ statusLine: { type: 'command', command: 'my-status' } }));
+    const r = await install({ ...t.opts, statusline: true }, t.env);
+    assert.equal(r.ok, true, r.errors.join());
+    assert.deepEqual(readSettings(t.base).statusLine, { type: 'command', command: 'my-status' });
+    const msg = r.messages.join('\n');
+    assert.match(msg, /statusLine/);
+    assert.match(msg, /refreshInterval/);
+    assert.ok(msg.includes('statusline.mjs'));
+  } finally { t.cleanup(); }
+});
+test('--statusline refreshes our own statusLine (other path), keeping extra fields', async () => {
+  const t = setup();
+  try {
+    fs.writeFileSync(settingsFile(t.base), JSON.stringify({ statusLine: { type: 'command', command: 'node "C:/old/.claude/skills/external-review/statusline.mjs"', refreshInterval: 5, padding: 1 } }));
+    const r = await install({ ...t.opts, statusline: true }, t.env);
+    assert.equal(r.ok, true, r.errors.join());
+    const sl = readSettings(t.base).statusLine;
+    assert.equal(sl.command, `node "${slCmd(t.base)}"`);
+    assert.equal(sl.refreshInterval, 1);
+    assert.equal(sl.padding, 1);
+  } finally { t.cleanup(); }
+});
+test('uninstall removes statusLine only when it is ours', async () => {
+  const t = setup();
+  try {
+    await install({ ...t.opts, statusline: true }, t.env);
+    assert.ok(readSettings(t.base).statusLine);
+    await uninstall({}, t.env);
+    assert.equal('statusLine' in readSettings(t.base), false);
+    fs.writeFileSync(settingsFile(t.base), JSON.stringify({ statusLine: { type: 'command', command: 'my-status' } }));
+    await uninstall({}, t.env);
+    assert.deepEqual(readSettings(t.base).statusLine, { type: 'command', command: 'my-status' });
+    // Wpis innej instalacji (inny BASE) nie jest usuwany.
+    const other = { type: 'command', command: 'node "C:/inna/.claude/skills/external-review/statusline.mjs"' };
+    fs.writeFileSync(settingsFile(t.base), JSON.stringify({ statusLine: other }));
+    await uninstall({}, t.env);
+    assert.deepEqual(readSettings(t.base).statusLine, other);
+  } finally { t.cleanup(); }
+});
+
+test('source without statusline.mjs aborts before any change', async () => {
+  const t = setup();
+  try {
+    const src = brokenSource(t);
+    fs.rmSync(path.join(src, 'statusline.mjs'));
+    const r = await install({ ...t.opts, srcDir: src, statusline: true }, t.env);
+    assert.equal(r.ok, false);
+    assert.match(r.errors.join('\n'), /statusline\.mjs/);
+    assert.deepEqual(fs.readdirSync(t.base), []);
+  } finally { t.cleanup(); }
+});
+test('parseArgs accepts --statusline', async () => {
+  const { parseArgs } = await import('../install.mjs');
+  assert.equal(parseArgs(['--statusline']).statusline, true);
+});
+
+test('source with symlinked hook.mjs is rejected before anything changes', async (tc) => {
+  const t = setup();
+  try {
+    assert.equal((await install(t.opts, t.env)).ok, true);
+    const helpBefore = fs.readFileSync(path.join(t.base, 'skills', 'external-review-help', 'SKILL.md'), 'utf8');
+    const src = brokenSource(t);
+    const real = path.join(t.tmp, 'real-hook.mjs');
+    fs.copyFileSync(path.join(src, 'hook.mjs'), real);
+    fs.rmSync(path.join(src, 'hook.mjs'));
+    try { fs.symlinkSync(real, path.join(src, 'hook.mjs'), 'file'); } catch { tc.skip('symlinks unavailable'); return; }
+    fs.appendFileSync(path.join(path.dirname(src), 'external-review-help', 'SKILL.md'), '\nzmiana\n');
+    const r = await install({ ...t.opts, srcDir: src }, t.env);
+    assert.equal(r.ok, false);
+    assert.match(r.errors.join('\n'), /hook\.mjs/);
+    assert.equal(fs.readFileSync(path.join(t.base, 'skills', 'external-review-help', 'SKILL.md'), 'utf8'), helpBefore);
+  } finally { t.cleanup(); }
+});
