@@ -338,13 +338,18 @@ export async function runStop(input, ctx) {
   }
 
   // Kroki 9–11: migawka „przed”, Codex równolegle (stan bez blokady), migawka „po”.
+  const codexStartedAt = Date.now();
   const before = safeSnapshot(ctx);
   const deadline = codexDeadline(start, cfg.hookTimeoutSec);
   const overrides = readWindowsOverrides();
   const pids = [];
   const results = await runJobsLive(ctx, jobs, codexPath, { deadline, overrides, pids }, dir);
   const after = before ? safeSnapshot(ctx) : null;
-  const changed = before && after ? changedBetween(before, after, cfg, ctx.nocase) : [];
+  const changedAll = before && after ? changedBetween(before, after, cfg, ctx.nocase) : [];
+  // Pliki edytowane w tym czasie narzędziami Claude'a (np. przez agenta) to nie zmiany Codexa.
+  let byTool = [];
+  try { byTool = changedAll.filter((rel) => (readState(dir).toolTouches?.[rel] ?? 0) >= codexStartedAt); } catch { /* stan nieczytelny */ }
+  const changed = changedAll.filter((rel) => !byTool.includes(rel));
   const changedHashes = Object.fromEntries(changed.map((rel) => [rel, fileHash(ctx.root, rel)]));
 
   // Krok 12: scalenie wyników pod blokadą.

@@ -601,3 +601,26 @@ test('enabled false → prompt and tool hooks do not record state', () => {
     assert.equal(fs.existsSync(path.join(t.stateDir, 'state.json')), false);
   } finally { t.cleanup(); }
 });
+
+test('files edited by Claude tools while Codex runs are not attributed to Codex', async () => {
+  const t = setup({ files: { 'src/b.js': 'const b = 1;\n' }, fake: { FAKE_CODEX_MODE: 'sleep', FAKE_CODEX_SLEEP_MS: '2500' } });
+  try {
+    t.hook('prompt');
+    t.write('src/a.js', lines(25));
+    t.tool('src/a.js');
+    const hookJs = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'external-review', 'hook.mjs');
+    const child = spawn(process.execPath, [hookJs, '--event', 'stop'], { env: t.env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.stdin.end(JSON.stringify({ ...fixture('stop'), cwd: t.repo }));
+    const done = new Promise((r) => child.on('close', r));
+    // W trakcie recenzji Claude (lub jego agent) edytuje kolejny plik.
+    for (let i = 0; i < 100 && t.callCount() === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    t.write('src/b.js', lines(30, 'b'));
+    t.tool('src/b.js');
+    await done;
+    assert.doesNotMatch(out, /src\/b\.js/, 'no "Codex zmienił" warning for a Claude edit');
+    const sess = t.state().sessions['sess-1'];
+    assert.ok(sess.touched.includes('src/b.js'), 'Claude edit stays tracked for the next review');
+  } finally { t.cleanup(); }
+});

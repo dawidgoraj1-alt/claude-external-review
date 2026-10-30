@@ -302,8 +302,16 @@ zgodnie z systemem (bez rozróżniania wielkości liter na Windows i macOS). Tes
   automatycznie: hook ostrzega raz i oznacza ich bieżącą treść jako przejrzaną. Pliki, które
   nie zmieściły się w `maxChunks` porcjach, czekają na kolejny Stop.
 - Zmian wprowadzonych przez Codexa nie da się przypisać do etapu; nie są cofane.
-- Na Windows sandbox Codexa może blokować uruchamianie procesów potomnych (`spawn EPERM`):
-  Codex czyta wtedy kod, ale nie zawsze sam uruchomi testy projektu.
+- Na Windows domyślny sandbox Codexa (`workspace-write` z `windows.sandbox="unelevated"`) blokuje
+  procesom uruchamianie procesów potomnych (`spawn EPERM`): Codex czyta kod, ale zwykle nie uruchomi
+  testów projektu (np. `npm test`). Na macOS i Linuksie tego ograniczenia nie ma. Aby Codex mógł
+  uruchamiać testy na Windows, wybierz jedno:
+  - **sandbox „elevated”** — skonfiguruj go w Codexie (wymaga jednorazowej zgody administratora),
+    a potem ustaw `sandbox = "elevated"` w sekcji `[windows]` swojego `~/.codex/config.toml` (skill
+    przenosi ustawienia z tej sekcji mimo `ignoreUserConfig`) albo
+    `"codexConfigOverrides": ["windows.sandbox=\"elevated\""]` w `config.local.json`;
+  - **bez sandboxa** — `"codexSandbox": "danger-full-access"` w `config.local.json`. Codex działa wtedy
+    bez żadnych ograniczeń (także poza projektem i z dostępem do sieci); używaj tylko w zaufanych projektach.
 - Tekst paska stanu jest stały; recenzja może trwać do `hookTimeoutSec` — Esc przerywa
   oczekiwanie (zmiany trafią do kolejnej recenzji).
 - Instalacja wyłącznie globalna (nie per projekt).

@@ -10,6 +10,7 @@ import { isBinary, normalizeText, sha256 } from './text.mjs';
 const BASELINE_MAX_FILES = 2000;
 const MTIME_SLACK_MS = 2000;
 const WALK_MAX_FILES = 50000;
+const TOOL_TOUCH_TTL_MS = 24 * 60 * 60 * 1000;
 
 export function classify(rel, cfg, nocase) {
   const segs = rel.split('/');
@@ -138,6 +139,10 @@ export async function onTool(input, ctx) {
         startedAt: ctx.now, headSha: null, snapshot: {}, touched: [], warnedMissingCodex: false,
       };
       if (!sess.touched.includes(rel)) sess.touched.push(rel);
+      // Czas edycji przez narzędzie Claude'a (dowolna sesja/agent): hook Stop nie przypisze jej Codexowi.
+      s.toolTouches ||= {};
+      s.toolTouches[rel] = Date.now();
+      for (const [k, at] of Object.entries(s.toolTouches)) if (Date.now() - at > TOOL_TOUCH_TTL_MS) delete s.toolTouches[k];
     });
   } catch { /* hooks never throw */ }
 }
