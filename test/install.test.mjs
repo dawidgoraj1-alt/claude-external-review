@@ -332,9 +332,10 @@ test('symlinked settings.json: link kept, real target updated', async (tc) => {
   } finally { t.cleanup(); }
 });
 
-function brokenSource(t, { dropHook = false } = {}) {
+function brokenSource(t, { dropHook = false, dropHelp = false } = {}) {
   const src = path.join(t.tmp, 'src-copy', 'external-review');
   copyDir(path.resolve(path.dirname(installMjs), 'src', 'external-review'), src);
+  if (!dropHelp) copyDir(path.resolve(path.dirname(installMjs), 'src', 'external-review-help'), path.join(t.tmp, 'src-copy', 'external-review-help'));
   if (dropHook) fs.rmSync(path.join(src, 'hook.mjs'));
   return src;
 }
@@ -404,4 +405,35 @@ test('installs the /external-review-help skill and uninstall removes it', async 
     assert.equal((await uninstall({}, t.env)).ok, true);
     assert.equal(fs.existsSync(path.join(t.base, 'skills', 'external-review-help')), false);
   } finally { t.cleanup(); }
+});
+
+test('source without the help skill aborts before any change', async () => {
+  const t = setup();
+  try {
+    const r = await install({ ...t.opts, srcDir: brokenSource(t, { dropHelp: true }) }, t.env);
+    assert.equal(r.ok, false);
+    assert.match(r.errors.join('\n'), /external-review-help/);
+    assert.deepEqual(fs.readdirSync(t.base), []);
+  } finally { t.cleanup(); }
+});
+
+test('failed help-skill copy on update keeps the previous main skill and settings', async () => {
+  const t = setup();
+  const orig = fs.copyFileSync;
+  try {
+    assert.equal((await install(t.opts, t.env)).ok, true);
+    const target = path.join(t.base, 'skills', 'external-review');
+    fs.writeFileSync(path.join(target, 'marker.txt'), 'old');
+    const settingsBefore = fs.readFileSync(settingsFile(t.base), 'utf8');
+    fs.copyFileSync = function patched(a, b, ...rest) {
+      if (String(b).includes('external-review-help.new-')) throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' });
+      return orig.call(this, a, b, ...rest);
+    };
+    const r = await install(t.opts, t.env);
+    fs.copyFileSync = orig;
+    assert.equal(r.ok, false);
+    assert.equal(fs.readFileSync(path.join(target, 'marker.txt'), 'utf8'), 'old');
+    assert.equal(fs.readFileSync(settingsFile(t.base), 'utf8'), settingsBefore);
+    assert.deepEqual(skillsEntries(t.base), ['external-review', 'external-review-help']);
+  } finally { fs.copyFileSync = orig; t.cleanup(); }
 });

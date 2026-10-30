@@ -242,6 +242,9 @@ export async function install(opts = {}, env = process.env) {
     if (hitTarget) {
       return { ok: false, errors: [`Katalog źródłowy (${src}) pokrywa się z katalogiem docelowym (${hitTarget}) lub zawiera go albo jest w nim zawarty. Sklonuj repozytorium poza ${path.join(baseDir(env), 'skills')}. Niczego nie zmieniono.`], messages };
     }
+    if (!fs.existsSync(path.join(helpSrc(src), 'SKILL.md'))) {
+      return { ok: false, errors: [`Brak skilla pomocy ${path.join(helpSrc(src), 'SKILL.md')} (external-review-help); repozytorium jest niekompletne. Niczego nie zmieniono.`], messages };
+    }
     const errors = await preflight(opts, env);
     if (errors.length) return { ok: false, errors, messages };
     const codexPath = resolveCodex(opts.codexCmd || 'codex', env);
@@ -251,8 +254,9 @@ export async function install(opts = {}, env = process.env) {
 
     const target = skillTarget(env);
     removeLeftovers(path.dirname(target));
+    // Najpierw pomoc: jej nieudana podmiana wycofuje się sama, a główny skill i settings zostają nietknięte.
+    replaceSkillDir(helpSrc(src), helpTarget(env), ['SKILL.md']);
     replaceSkillDir(src, target);
-    if (fs.existsSync(path.join(helpSrc(src), 'SKILL.md'))) replaceSkillDir(helpSrc(src), helpTarget(env), ['SKILL.md']);
 
     const next = { ...local, codexPath };
     if (opts.codexDefaultModel) next.model = null;
