@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 // Punkt wejścia external-review (interfejs: spec §3.3).
 import { onPrompt, onTool } from './lib/candidates.mjs';
 import { makeContext } from './lib/context.mjs';

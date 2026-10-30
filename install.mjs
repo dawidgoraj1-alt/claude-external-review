@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 // Instalator skilla external-review: preflight, kopiowanie do BASE/skills, wpisy hooków w settings.json.
 import fs from 'node:fs';
 import os from 'node:os';

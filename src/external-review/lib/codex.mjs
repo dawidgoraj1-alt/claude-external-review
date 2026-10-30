@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

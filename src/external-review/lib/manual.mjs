@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 // Tryby ręczne hook.mjs: --mark-reviewed, --manual, --pending, --save-display (spec §3.3, §8).
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 const MAX_MESSAGE = 9900;
 const STAGE_NAMES = { spec: 'specyfikacja', plan: 'plan', code: 'kod' };
 

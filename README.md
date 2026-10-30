@@ -1,5 +1,7 @@
 # claude-external-review
 
+**Autor: Dawid Góraj** · [github.com/dawidgoraj1-alt](https://github.com/dawidgoraj1-alt)
+
 Skill dla [Claude Code](https://claude.com/claude-code), który automatycznie (przez hooki)
 zleca niezależną recenzję **specyfikacji**, **planu implementacji** i **kodu** modelowi
 OpenAI uruchamianemu przez [Codex CLI](https://github.com/openai/codex) w trybie headless.
@@ -264,6 +266,16 @@ zgodnie z systemem (bez rozróżniania wielkości liter na Windows i macOS). Tes
 npm test
 ```
 
+## Autor
+
+Pomysł, projekt i implementacja: **Dawid Góraj** (2026).
+Oryginalne repozytorium: https://github.com/dawidgoraj1-alt/claude-external-review
+
+Jeśli korzystasz z tego skilla, rozwijasz go lub publikujesz jego fork,
+zachowaj informację o autorze i link do oryginalnego repozytorium.
+
 ## Licencja
 
-MIT.
+MIT © 2026 Dawid Góraj — pełna treść w pliku [LICENSE](LICENSE).
+Licencja wymaga zachowania powyższej informacji o prawach autorskich we wszystkich kopiach
+i istotnych częściach oprogramowania.

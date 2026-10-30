@@ -64,3 +64,5 @@ Gdy skill uruchomiła blokada hooka Stop, pliki pending są już gotowe — zacz
      Zapisuje to bieżącą treść plików jako przejrzaną — bez kolejnej rundy recenzji.
    Po zakończeniu podaj jednozdaniowe podsumowanie (co wprowadzono).
 7. **Jeśli użytkownik pisze o czymś innym**, zajmij się tym; uwagi zostają w pending (nie wywołuj `--mark-reviewed`), a hook przypomni o nich przy kolejnych Stop.
+
+<!-- external-review © 2026 Dawid Góraj — https://github.com/dawidgoraj1-alt/claude-external-review (MIT) -->

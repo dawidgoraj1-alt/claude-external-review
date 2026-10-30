@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 import fs from 'node:fs';
 import path from 'node:path';
 import { normalizeText, sha256 } from './text.mjs';

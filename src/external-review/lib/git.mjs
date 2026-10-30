@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Dawid Góraj — external-review (https://github.com/dawidgoraj1-alt/claude-external-review). Licencja MIT.
 import { execFileSync } from 'node:child_process';
 import { toSlash } from './paths.mjs';
 
