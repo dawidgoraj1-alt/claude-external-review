@@ -619,8 +619,31 @@ test('files edited by Claude tools while Codex runs are not attributed to Codex'
     t.write('src/b.js', lines(30, 'b'));
     t.tool('src/b.js');
     await done;
-    assert.doesNotMatch(out, /src\/b\.js/, 'no "Codex zmienił" warning for a Claude edit');
+    assert.doesNotMatch(out, /Codex zmienił pliki[^"]*src\/b\.js/, 'no "Codex zmienił" warning for a Claude edit');
     const sess = t.state().sessions['sess-1'];
     assert.ok(sess.touched.includes('src/b.js'), 'Claude edit stays tracked for the next review');
+  } finally { t.cleanup(); }
+});
+
+test('file edited by both Claude tools and Codex during the review: ambiguous warning, stays tracked', async () => {
+  const t = setup({ files: { 'src/b.js': 'const b = 1;\n' } });
+  try {
+    Object.assign(t.env, { FAKE_CODEX_MODE: 'modify', FAKE_CODEX_MODIFY: path.join(t.repo, 'src', 'b.js'), FAKE_CODEX_EVENT_MS: '400' });
+    t.hook('prompt');
+    t.write('src/a.js', lines(25));
+    t.tool('src/a.js');
+    const hookJs = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'external-review', 'hook.mjs');
+    const child = spawn(process.execPath, [hookJs, '--event', 'stop'], { env: t.env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.stdin.end(JSON.stringify({ ...fixture('stop'), cwd: t.repo }));
+    const done = new Promise((r) => child.on('close', r));
+    for (let i = 0; i < 100 && t.callCount() === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    t.write('src/b.js', lines(30, 'b'));
+    t.tool('src/b.js');
+    await done;
+    assert.doesNotMatch(out, /Codex zmienił pliki[^"]*src\/b\.js/);
+    assert.match(out, /zmienione w trakcie recenzji[^"]*src\/b\.js/);
+    assert.ok(t.state().sessions['sess-1'].touched.includes('src/b.js'));
   } finally { t.cleanup(); }
 });

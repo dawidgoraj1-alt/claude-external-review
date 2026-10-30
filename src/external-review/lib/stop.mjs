@@ -418,6 +418,8 @@ export async function runStop(input, ctx) {
   warnings.push(...failWarnings);
   if (!saved) warnings.push('Nie udało się zapisać wyników recenzji (blokada stanu zajęta lub stan chwilowo nieczytelny); pliki wrócą do recenzji.');
   if (changed.length) warnings.push(`Codex zmienił pliki projektu (zmian nie cofnięto): ${list(changed)}.`);
+  // Nie wiadomo, czy Codex zmienił je także — zostają w kolejce, więc trafią do kolejnej recenzji.
+  if (byTool.length) warnings.push(`Pliki zmienione w trakcie recenzji przez Claude'a (możliwe, że także przez Codexa) — trafią do kolejnej recenzji: ${list(byTool)}.`);
 
   // Krok 13.
   if (saved && newCount > 0) {
